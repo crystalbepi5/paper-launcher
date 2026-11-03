@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -62,7 +63,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val EXPANDED = 700.dp
+/** Cover measures 475 dp on its short side, inner 704 dp, in either orientation. */
+private const val EXPANDED_SMALLEST_DP = 600
 
 @Composable
 fun PaperTheme(mode: ThemeMode, content: @Composable () -> Unit) {
@@ -105,7 +107,7 @@ fun HomeRoot(vm: HomeViewModel, homeRequests: Int, openSettings: () -> Unit) {
         val c = LocalPalette.current
         Box(Modifier.fillMaxSize().background(c.paper).safeDrawingPadding()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val expanded = maxWidth >= EXPANDED
+                val expanded = LocalConfiguration.current.smallestScreenWidthDp >= EXPANDED_SMALLEST_DP
                 val frost = rememberFrostModifier(vm, expanded, saved.frost, frostTests, c.paper, c.shade)
                 val open: (AppEntry) -> Unit = { vm.launch(it) }
                 val menu: (String) -> Unit = { menuId = it }
