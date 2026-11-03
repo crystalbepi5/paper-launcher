@@ -105,15 +105,18 @@ fun HomeRoot(vm: HomeViewModel, homeRequests: Int, openSettings: () -> Unit) {
         Box(Modifier.fillMaxSize().background(c.paper).safeDrawingPadding()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val expanded = maxWidth >= EXPANDED
+                val frost = rememberFrostModifier(expanded, saved.frost, c.paper, c.shade)
                 val open: (AppEntry) -> Unit = { vm.launch(it) }
                 val menu: (String) -> Unit = { menuId = it }
-                when (screen) {
-                    "apps" -> AppsScreen(vm, apps, loaded, expanded, saved, open, menu) { screen = "home" }
-                    "search" -> SearchScreen(vm, apps, saved, expanded, open, menu) { screen = "home" }
-                    else -> if (expanded) {
-                        ExpandedHome(vm, apps, loaded, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
-                    } else {
-                        CompactHome(vm, apps, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
+                Box(Modifier.fillMaxSize().then(frost)) {
+                    when (screen) {
+                        "apps" -> AppsScreen(vm, apps, loaded, expanded, saved, open, menu) { screen = "home" }
+                        "search" -> SearchScreen(vm, apps, saved, expanded, open, menu) { screen = "home" }
+                        else -> if (expanded) {
+                            ExpandedHome(vm, apps, loaded, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
+                        } else {
+                            CompactHome(vm, apps, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
+                        }
                     }
                 }
             }

@@ -83,6 +83,15 @@ class SettingsActivity : ComponentActivity() {
                             size = 14,
                             color = c.secondary,
                         )
+                        Label("EFFECTS", Modifier.padding(top = 12.dp), size = 12, mono = true, color = c.secondary)
+                        ActionButton(if (saved.frost) "Reduce effects: off" else "Reduce effects: on", primary = false) {
+                            scope.launch { prefs.setFrost(!saved.frost) }
+                        }
+                        Label(
+                            "Frost plays when you unfold with Paper on screen. It also stays off in Battery Saver and when system animations are off.",
+                            size = 14,
+                            color = c.secondary,
+                        )
                         Label("THEME", Modifier.padding(top = 12.dp), size = 12, mono = true, color = c.secondary)
                         Row(Modifier.fillMaxWidth().border(1.5.dp, c.ink, RoundedCornerShape(10.dp))) {
                             ThemeMode.entries.forEach { mode ->
