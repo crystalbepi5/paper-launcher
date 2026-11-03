@@ -91,6 +91,47 @@ class MainActivity : ComponentActivity() {
         override fun onDisplayChanged(id: Int) = Report.event("DISPLAY changed ${describe(displays.getDisplay(id))}")
     }
 
+    private var recording = false
+    private val motionListener = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            if (recording) Report.event("MOTION ${e.sensor.name} " + e.values.joinToString(",") { "%.3f".format(it) })
+        }
+        override fun onAccuracyChanged(s: Sensor, accuracy: Int) = Unit
+    }
+    private val probeListener = object : SensorEventListener {
+        private val last = HashMap<String, String>()
+        override fun onSensorChanged(e: SensorEvent) {
+            val v = e.values.joinToString(",")
+            if (last[e.sensor.name] != v) {
+                last[e.sensor.name] = v
+                Report.event("PROBE ${e.sensor.name} type=${e.sensor.stringType} values=$v")
+            }
+        }
+        override fun onAccuracyChanged(s: Sensor, accuracy: Int) = Unit
+    }
+
+    private fun isCandidate(s: Sensor): Boolean {
+        val text = (s.name + " " + s.stringType).lowercase()
+        return listOf("fold", "hinge", "angle", "flex", "hall", "lid", "secondary", "sub ", "second", "aux").any { it in text }
+    }
+
+    private fun startRecording() {
+        if (recording) return
+        recording = true
+        Report.event("RECORD start, open and close the phone slowly")
+        listOf(Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE, Sensor.TYPE_GRAVITY).forEach { type ->
+            sensors.getSensorList(type).forEach { sensors.registerListener(motionListener, it, 20_000) }
+        }
+        ui.postDelayed({ stopRecording() }, 20_000)
+    }
+
+    private fun stopRecording() {
+        if (!recording) return
+        recording = false
+        sensors.unregisterListener(motionListener)
+        Report.event("RECORD stop")
+    }
+
     private val refresh = object : Runnable {
         override fun run() {
             output.text = Report.tail()
@@ -137,7 +178,7 @@ class MainActivity : ComponentActivity() {
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(28, 27, 25))
             textSize = 14f
-            text = "1. Inner screen: open and close slowly between flat and half open, 3 times.\n2. Close the phone, unlock on the cover screen, open this app there, wait 3 seconds.\n3. Unfold slowly with the app showing.\n4. Tap Copy report."
+            text = "1. Lay the phone flat on a table. Tap Record 20s.\n2. Keep one half on the table. Slowly lift the other half to half open and back, 3 times.\n3. Wait for RECORD stop, then tap Share and save the report as a file."
         })
         val buttons = LinearLayout(this)
         buttons.addView(Button(this).apply {
@@ -153,6 +194,10 @@ class MainActivity : ComponentActivity() {
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Report.full())
                 startActivity(Intent.createChooser(send, "Share report"))
             }
+        })
+        buttons.addView(Button(this).apply {
+            text = "Record 20s"
+            setOnClickListener { startRecording() }
         })
         buttons.addView(Button(this).apply {
             text = "Clear"
@@ -173,11 +218,12 @@ class MainActivity : ComponentActivity() {
 
     private fun collectHeader() {
         val h = Report.header
-        h += "Paper diagnostic 0.2"
+        h += "Paper diagnostic 0.3"
         h += "device=${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})"
         h += "android=${Build.VERSION.RELEASE} sdk=${Build.VERSION.SDK_INT} build=${Build.DISPLAY}"
         h += "renderEffect=${Build.VERSION.SDK_INT >= 31} runtimeShader=${Build.VERSION.SDK_INT >= 33}"
         h += "hingeSensor=" + (hinge?.let { "${it.name} vendor=${it.vendor} max=${it.maximumRange} res=${it.resolution} minDelayUs=${it.minDelay} wakeUp=${it.isWakeUpSensor} mode=${it.reportingMode}" } ?: "NOT EXPOSED")
+        sensors.getSensorList(Sensor.TYPE_ALL).forEach { h += "sensor name=${it.name} type=${it.stringType} wake=${it.isWakeUpSensor} mode=${it.reportingMode} max=${it.maximumRange} res=${it.resolution}" }
         h += "foldingAngleSensor=" + (foldingAngle?.let { "${it.name} max=${it.maximumRange} res=${it.resolution} minDelayUs=${it.minDelay} wakeUp=${it.isWakeUpSensor} mode=${it.reportingMode}" } ?: "NOT EXPOSED")
         sensors.getSensorList(Sensor.TYPE_ALL)
             .filter { it.name.contains("hinge", true) || it.name.contains("fold", true) || it.stringType.contains("hinge", true) }
@@ -213,7 +259,10 @@ class MainActivity : ComponentActivity() {
         lastAngle = Float.NaN
         lastFolding = ""
         hinge?.let { sensors.registerListener(hingeListener, it, SensorManager.SENSOR_DELAY_FASTEST) }
-        foldingAngle?.let { sensors.registerListener(foldingListener, it, SensorManager.SENSOR_DELAY_FASTEST) }
+        foldingAngle?.let { Report.event("REGISTER folding angle fastest accepted=" + sensors.registerListener(foldingListener, it, SensorManager.SENSOR_DELAY_FASTEST)) }
+        sensors.getSensorList(Sensor.TYPE_ALL).filter { isCandidate(it) && it != hinge && it != foldingAngle }.forEach {
+            Report.event("REGISTER ${it.name} type=${it.stringType} accepted=" + sensors.registerListener(probeListener, it, SensorManager.SENSOR_DELAY_FASTEST))
+        }
         displays.registerDisplayListener(displayListener, ui)
         ui.post(refresh)
     }
@@ -225,6 +274,8 @@ class MainActivity : ComponentActivity() {
         Report.event("LIFECYCLE onStop")
         sensors.unregisterListener(hingeListener)
         sensors.unregisterListener(foldingListener)
+        sensors.unregisterListener(probeListener)
+        stopRecording()
         displays.unregisterDisplayListener(displayListener)
         ui.removeCallbacks(refresh)
         super.onStop()

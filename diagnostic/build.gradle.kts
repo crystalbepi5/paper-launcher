@@ -9,8 +9,23 @@ android {
         applicationId = "dev.paperlauncher.diagnostic"
         minSdk = 31
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
+    }
+    signingConfigs {
+        System.getenv("PAPER_KEYSTORE")?.let { path ->
+            create("paper") {
+                storeFile = file(path)
+                storePassword = System.getenv("PAPER_KEYSTORE_PASSWORD")
+                keyAlias = "paper"
+                keyPassword = System.getenv("PAPER_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            signingConfigs.findByName("paper")?.let { signingConfig = it }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

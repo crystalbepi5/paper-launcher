@@ -1,4 +1,4 @@
-name: Build diagnostic APK
+name: Build APKs
 on:
   push:
     branches: [main]
@@ -14,20 +14,41 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing
+          key: paper-signing-v1
+      - name: Create signing key if missing
+        run: |
+          mkdir -p .signing
+          if [ ! -f .signing/paper.keystore ]; then
+            openssl rand -hex 24 > .signing/password
+            keytool -genkeypair -keystore .signing/paper.keystore -storetype PKCS12 \
+              -storepass "$(cat .signing/password)" -keypass "$(cat .signing/password)" \
+              -alias paper -keyalg RSA -keysize 3072 -validity 18000 -dname "CN=Paper Launcher"
+          fi
+          echo "PAPER_KEYSTORE=$PWD/.signing/paper.keystore" >> "$GITHUB_ENV"
+          echo "::add-mask::$(cat .signing/password)"
+          echo "PAPER_KEYSTORE_PASSWORD=$(cat .signing/password)" >> "$GITHUB_ENV"
       - name: Build with Gradle 8.11.1
         run: |
           curl -fsSL -o gradle.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
           unzip -q gradle.zip -d "$RUNNER_TEMP"
-          "$RUNNER_TEMP/gradle-8.11.1/bin/gradle" :diagnostic:assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: paper-diagnostic
-          path: diagnostic/build/outputs/apk/debug/diagnostic-debug.apk
-      - name: Publish APK to a release
+          set +e
+          "$RUNNER_TEMP/gradle-8.11.1/bin/gradle" :launcher:testReleaseUnitTest :launcher:assembleRelease :diagnostic:assembleDebug --no-daemon 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" != "0" ]; then
+            grep -E '^e: |error:|What went wrong|FAILED|Could not' build.log | sed 's#/home/runner/work/paper-launcher/paper-launcher/##' | head -9 | while IFS= read -r line; do echo "::error::$line"; done
+            exit "$code"
+          fi
+      - name: Publish APKs to a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp launcher/build/outputs/apk/release/launcher-release.apk paper-launcher.apk
           cp diagnostic/build/outputs/apk/debug/diagnostic-debug.apk paper-diagnostic.apk
-          gh release create "diagnostic-${{ github.run_number }}" paper-diagnostic.apk \
-            --title "Paper Diagnostic build ${{ github.run_number }}" \
-            --notes "Read-only device diagnostic. It does not become your home screen."
+          gh release create "build-${{ github.run_number }}" paper-launcher.apk paper-diagnostic.apk \
+            --title "Paper build ${{ github.run_number }}" \
+            --notes "Paper launcher and read-only diagnostic. Installing the launcher does not make it your home screen."

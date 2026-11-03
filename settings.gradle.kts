@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "paper-launcher"
 include(":diagnostic")
+include(":launcher")
