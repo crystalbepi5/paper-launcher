@@ -14,7 +14,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - run: ./gradlew :diagnostic:assembleDebug --no-daemon
+      - name: Build with Gradle 8.11.1
+        run: |
+          curl -fsSL -o gradle.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          unzip -q gradle.zip -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/gradle-8.11.1/bin/gradle" :diagnostic:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: paper-diagnostic
