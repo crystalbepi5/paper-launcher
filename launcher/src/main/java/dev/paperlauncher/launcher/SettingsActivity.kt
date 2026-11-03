@@ -92,6 +92,8 @@ class SettingsActivity : ComponentActivity() {
                             size = 14,
                             color = c.secondary,
                         )
+                        Label("FROST TRACE", Modifier.padding(top = 12.dp), size = 12, mono = true, color = c.secondary)
+                        Label(remember(tick) { FrostTrace.text().ifEmpty { "Nothing yet." } }, size = 11, mono = true)
                         Label("THEME", Modifier.padding(top = 12.dp), size = 12, mono = true, color = c.secondary)
                         Row(Modifier.fillMaxWidth().border(1.5.dp, c.ink, RoundedCornerShape(10.dp))) {
                             ThemeMode.entries.forEach { mode ->

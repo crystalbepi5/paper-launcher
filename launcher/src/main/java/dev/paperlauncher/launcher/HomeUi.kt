@@ -92,6 +92,7 @@ fun HomeRoot(vm: HomeViewModel, homeRequests: Int, openSettings: () -> Unit) {
     val notice by vm.notice.collectAsState()
     var screen by rememberSaveable { mutableStateOf("home") }
     var menuId by rememberSaveable { mutableStateOf<String?>(null) }
+    var frostTests by remember { mutableStateOf(0) }
 
     LaunchedEffect(homeRequests) {
         if (homeRequests > 0) { screen = "home"; menuId = null }
@@ -105,7 +106,7 @@ fun HomeRoot(vm: HomeViewModel, homeRequests: Int, openSettings: () -> Unit) {
         Box(Modifier.fillMaxSize().background(c.paper).safeDrawingPadding()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val expanded = maxWidth >= EXPANDED
-                val frost = rememberFrostModifier(expanded, saved.frost, c.paper, c.shade)
+                val frost = rememberFrostModifier(vm, expanded, saved.frost, frostTests, c.paper, c.shade)
                 val open: (AppEntry) -> Unit = { vm.launch(it) }
                 val menu: (String) -> Unit = { menuId = it }
                 Box(Modifier.fillMaxSize().then(frost)) {
@@ -113,7 +114,7 @@ fun HomeRoot(vm: HomeViewModel, homeRequests: Int, openSettings: () -> Unit) {
                         "apps" -> AppsScreen(vm, apps, loaded, expanded, saved, open, menu) { screen = "home" }
                         "search" -> SearchScreen(vm, apps, saved, expanded, open, menu) { screen = "home" }
                         else -> if (expanded) {
-                            ExpandedHome(vm, apps, loaded, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
+                            ExpandedHome(vm, apps, loaded, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings) { frostTests += 1 }
                         } else {
                             CompactHome(vm, apps, saved, open, menu, { screen = "search" }, { screen = "apps" }, openSettings)
                         }
@@ -277,7 +278,7 @@ private fun CompactHome(vm: HomeViewModel, apps: List<AppEntry>, saved: Saved, o
 
 /** Two panes split at the window's center, where the crease measured on this phone sits. */
 @Composable
-private fun ExpandedHome(vm: HomeViewModel, apps: List<AppEntry>, loaded: Boolean, saved: Saved, onOpen: (AppEntry) -> Unit, onMenu: (String) -> Unit, onSearch: () -> Unit, onApps: () -> Unit, onSettings: () -> Unit) {
+private fun ExpandedHome(vm: HomeViewModel, apps: List<AppEntry>, loaded: Boolean, saved: Saved, onOpen: (AppEntry) -> Unit, onMenu: (String) -> Unit, onSearch: () -> Unit, onApps: () -> Unit, onSettings: () -> Unit, onTestFrost: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 24.dp)) {
@@ -303,6 +304,7 @@ private fun ExpandedHome(vm: HomeViewModel, apps: List<AppEntry>, loaded: Boolea
         Rule(Modifier.padding(horizontal = 24.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             SearchEntry("Find an app...", Modifier.weight(1f), onSearch)
+            TextAction("Test frost", Glyph.MORE, 3f, onTestFrost)
             TextAction("All apps", Glyph.GRID, 3f, onApps)
             GlyphButton(Glyph.SETTINGS, "Launcher settings", onClick = onSettings)
         }

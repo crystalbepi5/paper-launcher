@@ -14,6 +14,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FrostTrace.add("activity created, restored=${savedInstanceState != null}")
         enableEdgeToEdge()
         setContent {
             HomeRoot(
@@ -24,8 +25,19 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        FrostTrace.add("config ${newConfig.screenWidthDp}x${newConfig.screenHeightDp}")
+    }
+
+    override fun onStop() {
+        FrostTrace.add("activity stopped")
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
+        FrostTrace.add("activity resumed")
         vm.refresh()
     }
 

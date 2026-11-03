@@ -16,6 +16,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = Prefs(app)
     private val catalog = AppCatalog(app) { refresh() }
 
+    var lastExpanded: Boolean? = null
     val apps = MutableStateFlow<List<AppEntry>>(emptyList())
     val loaded = MutableStateFlow(false)
     val notice = MutableStateFlow<String?>(null)

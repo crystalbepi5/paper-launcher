@@ -31,9 +31,23 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+
+/** In-memory trace shown in Paper Settings while the frost is being tuned. */
+object FrostTrace {
+    private val lines = ArrayList<String>()
+    private val start = android.os.SystemClock.elapsedRealtime()
+
+    @Synchronized fun add(text: String) {
+        if (lines.size >= 40) lines.removeAt(0)
+        lines.add("${android.os.SystemClock.elapsedRealtime() - start} $text")
+    }
+
+    @Synchronized fun text(): String = lines.joinToString("\n")
+}
 
 private const val HOLD_LIMIT_MS = 2500L
 private const val CLEAR_MS = 320
@@ -45,7 +59,10 @@ private suspend fun awaitFlat(context: Context) {
     val hinge = sensors.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) ?: return
     callbackFlow {
         val listener = object : SensorEventListener {
-            override fun onSensorChanged(e: SensorEvent) { trySend(e.values[0]) }
+            override fun onSensorChanged(e: SensorEvent) {
+                FrostTrace.add("hinge ${e.values[0]}")
+                trySend(e.values[0])
+            }
             override fun onAccuracyChanged(s: Sensor, accuracy: Int) = Unit
         }
         sensors.registerListener(listener, hinge, SensorManager.SENSOR_DELAY_NORMAL)
@@ -56,24 +73,42 @@ private suspend fun awaitFlat(context: Context) {
 private fun effectsAllowed(context: Context): Boolean {
     val power = context.getSystemService(PowerManager::class.java)
     val animations = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    FrostTrace.add("allowed? saver=${power.isPowerSaveMode} anim=$animations thermal=${power.currentThermalStatus}")
     return !power.isPowerSaveMode && animations > 0f && power.currentThermalStatus < PowerManager.THERMAL_STATUS_SEVERE
 }
 
 /** Frost starts when the window grows from cover to inner, holds until the hinge reads flat, then clears right to left. */
 @Composable
-fun rememberFrostModifier(expanded: Boolean, userEnabled: Boolean, paper: Color, wash: Color): Modifier {
+fun rememberFrostModifier(vm: HomeViewModel, expanded: Boolean, userEnabled: Boolean, testRuns: Int, paper: Color, wash: Color): Modifier {
     val context = LocalContext.current
-    val memory = remember { booleanArrayOf(expanded) }
+    val drawnOnce = remember { booleanArrayOf(false) }
     var level by remember { mutableFloatStateOf(0f) }
-    val grew = expanded && !memory[0]
-    memory[0] = expanded
-    if (grew && userEnabled && effectsAllowed(context)) level = 1f
+    val prior = vm.lastExpanded
+    vm.lastExpanded = expanded
+    if (prior != expanded) FrostTrace.add("layout expanded=$expanded was=$prior frostOn=$userEnabled")
+    if (prior == false && expanded && userEnabled && effectsAllowed(context)) {
+        level = 1f
+        drawnOnce[0] = false
+        FrostTrace.add("frost armed")
+    }
     if (!expanded) level = 0f
 
     LaunchedEffect(expanded) {
         if (level > 0f) {
-            withTimeoutOrNull(HOLD_LIMIT_MS) { awaitFlat(context) }
+            val flat = withTimeoutOrNull(HOLD_LIMIT_MS) { awaitFlat(context); true }
+            FrostTrace.add(if (flat == true) "hold ended: flat" else "hold ended: time limit")
             animate(level, 0f, animationSpec = tween(CLEAR_MS, easing = LinearEasing)) { value, _ -> level = value }
+            FrostTrace.add("frost cleared")
+        }
+    }
+
+    LaunchedEffect(testRuns) {
+        if (testRuns > 0) {
+            FrostTrace.add("test frost")
+            drawnOnce[0] = false
+            level = 1f
+            delay(1500)
+            animate(1f, 0f, animationSpec = tween(CLEAR_MS, easing = LinearEasing)) { value, _ -> level = value }
         }
     }
 
@@ -82,6 +117,10 @@ fun rememberFrostModifier(expanded: Boolean, userEnabled: Boolean, paper: Color,
         drawContent()
         val p = level
         if (p > 0f) {
+            if (!drawnOnce[0]) {
+                drawnOnce[0] = true
+                FrostTrace.add("first frost frame ${size.width.toInt()}x${size.height.toInt()}")
+            }
             val blur = 14.dp.toPx() * (0.4f + 0.6f * p)
             layer.renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
             layer.record { this@drawWithContent.drawContent() }
