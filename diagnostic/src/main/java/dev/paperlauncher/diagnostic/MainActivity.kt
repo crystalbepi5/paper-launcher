@@ -59,7 +59,20 @@ class MainActivity : ComponentActivity() {
     private lateinit var sensors: SensorManager
     private lateinit var displays: DisplayManager
     private var hinge: Sensor? = null
+    private var foldingAngle: Sensor? = null
     private var lastAngle = Float.NaN
+    private var lastFolding = ""
+
+    private val foldingListener = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            val values = e.values.joinToString(",")
+            if (values == lastFolding) return
+            lastFolding = values
+            val lagMs = (SystemClock.elapsedRealtimeNanos() - e.timestamp) / 1_000_000
+            Report.event("FOLDING_ANGLE values=$values lagMs=$lagMs acc=${e.accuracy}")
+        }
+        override fun onAccuracyChanged(s: Sensor, accuracy: Int) = Unit
+    }
 
     private val hingeListener = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
@@ -90,6 +103,7 @@ class MainActivity : ComponentActivity() {
         sensors = getSystemService(SensorManager::class.java)
         displays = getSystemService(DisplayManager::class.java)
         hinge = sensors.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE)
+        foldingAngle = sensors.getSensorList(Sensor.TYPE_ALL).firstOrNull { it.stringType == "com.samsung.sensor.folding_angle" }
         setContentView(buildUi())
         if (Report.header.isEmpty()) collectHeader()
         Report.event("LIFECYCLE onCreate")
@@ -123,7 +137,7 @@ class MainActivity : ComponentActivity() {
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(28, 27, 25))
             textSize = 14f
-            text = "1. Open flat, wait 3 seconds.\n2. Close slowly to the cover screen, wait 3 seconds.\n3. Open slowly. Repeat twice.\n4. Half open and hold, then tap Copy report."
+            text = "1. Inner screen: open and close slowly between flat and half open, 3 times.\n2. Close the phone, unlock on the cover screen, open this app there, wait 3 seconds.\n3. Unfold slowly with the app showing.\n4. Tap Copy report."
         })
         val buttons = LinearLayout(this)
         buttons.addView(Button(this).apply {
@@ -159,11 +173,12 @@ class MainActivity : ComponentActivity() {
 
     private fun collectHeader() {
         val h = Report.header
-        h += "Paper diagnostic 0.1"
+        h += "Paper diagnostic 0.2"
         h += "device=${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})"
         h += "android=${Build.VERSION.RELEASE} sdk=${Build.VERSION.SDK_INT} build=${Build.DISPLAY}"
         h += "renderEffect=${Build.VERSION.SDK_INT >= 31} runtimeShader=${Build.VERSION.SDK_INT >= 33}"
         h += "hingeSensor=" + (hinge?.let { "${it.name} vendor=${it.vendor} max=${it.maximumRange} res=${it.resolution} minDelayUs=${it.minDelay} wakeUp=${it.isWakeUpSensor} mode=${it.reportingMode}" } ?: "NOT EXPOSED")
+        h += "foldingAngleSensor=" + (foldingAngle?.let { "${it.name} max=${it.maximumRange} res=${it.resolution} minDelayUs=${it.minDelay} wakeUp=${it.isWakeUpSensor} mode=${it.reportingMode}" } ?: "NOT EXPOSED")
         sensors.getSensorList(Sensor.TYPE_ALL)
             .filter { it.name.contains("hinge", true) || it.name.contains("fold", true) || it.stringType.contains("hinge", true) }
             .forEach { h += "relatedSensor=${it.name} type=${it.stringType}" }
@@ -194,7 +209,11 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Report.event("LIFECYCLE onStart")
+        logWindow("start")
+        lastAngle = Float.NaN
+        lastFolding = ""
         hinge?.let { sensors.registerListener(hingeListener, it, SensorManager.SENSOR_DELAY_FASTEST) }
+        foldingAngle?.let { sensors.registerListener(foldingListener, it, SensorManager.SENSOR_DELAY_FASTEST) }
         displays.registerDisplayListener(displayListener, ui)
         ui.post(refresh)
     }
@@ -205,6 +224,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         Report.event("LIFECYCLE onStop")
         sensors.unregisterListener(hingeListener)
+        sensors.unregisterListener(foldingListener)
         displays.unregisterDisplayListener(displayListener)
         ui.removeCallbacks(refresh)
         super.onStop()
